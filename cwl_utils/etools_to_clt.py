@@ -9,29 +9,45 @@ from cwltool.expression import do_eval
 from cwltool.errors import WorkflowException
 from schema_salad.sourceline import SourceLine
 
-def main():
-    top = cwl.load_document(sys.argv[1])
-    result, modified = traverse(top, False)  # 2nd parameter: True to make CommandLineTools, False for ExpressionTools
-    if not modified:
-        with open(sys.argv[1], 'r') as f:
-            shutil.copyfileobj(f, sys.stdout)
-            return
-    if not isinstance(result, MutableSequence):
-        result_json = cwl.save(
-            result,
-            base_url=result.loadingOptions.fileuri)
-    #   ^^ Setting the base_url and keeping the default value
-    #      for relative_uris=True means that the IDs in the generated
-    #      JSON/YAML are kept clean of the path to the input document
-    else:
-        result_json = [cwl.save(
-            result_item, base_url=result_item.loadingOptions.fileuri) for
-            result_item in result]
-    yaml.scalarstring.walk_tree(result_json)
-    # ^ converts multine line strings to nice multiline YAML
-    print("#!/usr/bin/env cwl-runner")  # TODO: teach the codegen to do this?
-    yaml.round_trip_dump(result_json, sys.stdout)
 
+def main(argv=None):
+    if argv is None:
+        argv = sys.argv[1:]
+
+    src_path = argv[0]
+    target_path = None
+    if len(argv) > 1:
+        target_path = argv[1]
+    try:
+        if target_path:
+            target = open(target_path, 'w')
+        else:
+            target = target
+
+        top = cwl.load_document(src_path)
+        result, modified = traverse(top, False)  # 2nd parameter: True to make CommandLineTools, False for ExpressionTools
+        if not modified:
+            with open(src_path, 'r') as f:
+                shutil.copyfileobj(f, target)
+                return
+        if not isinstance(result, MutableSequence):
+            result_json = cwl.save(
+                result,
+                base_url=result.loadingOptions.fileuri)
+        #   ^^ Setting the base_url and keeping the default value
+        #      for relative_uris=True means that the IDs in the generated
+        #      JSON/YAML are kept clean of the path to the input document
+        else:
+            result_json = [cwl.save(
+                result_item, base_url=result_item.loadingOptions.fileuri) for
+                result_item in result]
+        yaml.scalarstring.walk_tree(result_json)
+        # ^ converts multine line strings to nice multiline YAML
+        print("#!/usr/bin/env cwl-runner")  # TODO: teach the codegen to do this?
+        yaml.round_trip_dump(result_json, target)
+    finally:
+        if target_path:
+            target.close()
 
 def escape_expression_field(contents: str) -> str:
     return contents.replace('${', '$/{').replace('$(', '$/(')
